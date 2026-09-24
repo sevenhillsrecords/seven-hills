@@ -9,6 +9,8 @@ python-dotenv = "*"
 duckdb = "*"
 pandas = "*"
 pygithub = "*"
+dbt = "*"
+dbt-duckdb = "*"
 
 [dev-packages]
 
