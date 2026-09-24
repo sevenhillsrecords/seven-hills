@@ -33,4 +33,5 @@ jobs:
           CLIENT_SECRET: ${{ secrets.CLIENT_SECRET }}
           REFRESH_TOKEN: ${{ secrets.REFRESH_TOKEN }}
           MOTHERDUCK_TOKEN: ${{ secrets.MOTHERDUCK_TOKEN }}
+          GH_PAT: ${{ secrets.GH_PAT }}
         run: python bandcamp_api.py  # Replace with your actual script filename
