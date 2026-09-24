@@ -170,9 +170,9 @@ if __name__ == "__main__":
   if token:
     b_id = get_band_id(token)
     if b_id:
-      # To run your normal daily ingestion, use:
-      # report = get_sales_report(token, b_id)
-      # save_to_duckdb(report)
+      # To run the normal daily ingestion, use:
+      report = get_sales_report(token, b_id)
+      save_to_duckdb(report)
 
-      # To run your massive backfill, uncomment below:
-      run_historical_backfill(token, b_id, start_year=2018)
+      # To run the backfill, uncomment below:
+    #   run_historical_backfill(token, b_id, start_year=2018)
