@@ -1,0 +1,8 @@
+version: 2
+
+sources:
+  - name: bandcamp
+    database: my_db
+    schema: main
+    tables:
+      - name: bandcamp_raw_sales

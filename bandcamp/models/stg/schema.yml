@@ -1,0 +1,19 @@
+version: 2
+
+models:
+  - name: stg_bandcamp_sales_report
+    description: "Staged raw Bandcamp sales, parsing timestamps and casting types for downstream use."
+    columns:
+      - name: sales_report_id
+        description: Unique identifier for line item. Surrogate of bandcamp_transaction_item_id and bandcamp_transaction_id
+        tests:
+          - unique
+          - not_null
+      - name: transaction_id
+        description: "Identifier for the transaction."
+        tests:
+          - not_null
+      - name: sale_date
+        description: "Timestamp of when the transaction occurred."
+        tests:
+          - not_null

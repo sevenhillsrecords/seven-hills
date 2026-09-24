@@ -1,0 +1,27 @@
+version: 2
+
+models:
+  - name: fct_sales
+    description: "Fact table for standard merchandise and digital sales, excluding refunds and payouts."
+    columns:
+      - name: sale_id
+        description: "Primary key representing individual sales line items."
+        tests:
+          - unique
+          - not_null
+
+  - name: fct_payouts
+    description: "Fact table capturing direct payout entries sent to the label from Bandcamp."
+    columns:
+      - name: payout_id
+        tests:
+          - unique
+          - not_null
+
+  - name: fct_refunds
+    description: "Fact table tracking refunded line items tied to valid transactions."
+    columns:
+      - name: refund_id
+        tests:
+          - unique
+          - not_null
