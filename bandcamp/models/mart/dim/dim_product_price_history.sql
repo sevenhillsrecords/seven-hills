@@ -17,25 +17,24 @@ WITH price_changes AS (
 add_next_date AS (
     SELECT
         item_name,
-        catalog_number,
-        artist,
         package,
+        catalog_number,
         item_url,
         item_price,
         effective_date AS valid_from,
         LEAD(effective_date) OVER (
-            PARTITION BY catalog_number, package 
+            PARTITION BY item_name, package, item_url
             ORDER BY effective_date ASC
         ) AS valid_to
     FROM price_changes
 )
 
 SELECT
-    {{ dbt_utils.generate_surrogate_key(['item_name', 'package', 'valid_from']) }} AS product_version_key,
-    catalog_number,
+    {{ dbt_utils.generate_surrogate_key(['item_name', 'package', 'item_url', 'valid_from']) }} AS product_version_key,
+    {{ dbt_utils.generate_surrogate_key(['item_name', 'package', 'item_url']) }} AS product_key,
     item_name,
-    artist,
     package,
+    catalog_number,
     item_url,
     item_price,
     valid_from,

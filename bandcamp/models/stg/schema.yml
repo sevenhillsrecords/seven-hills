@@ -17,3 +17,7 @@ models:
         description: "Timestamp of when the transaction occurred."
         tests:
           - not_null
+      - name: item_type
+        description: Determines whether the line item is a sale, refund, or payout. Should never be null.
+        tests:
+          - not_null

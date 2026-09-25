@@ -5,7 +5,7 @@ models:
     description: "Core product dimension containing unique releases and formats, excluding dynamic pricing."
     columns:
       - name: product_key
-        description: "Unique surrogate key combining catalog number and package format."
+        description: "Unique surrogate key combining catalog number, item URL and package."
         tests:
           - unique
           - not_null
@@ -13,14 +13,16 @@ models:
         description: "The product name."
         tests:
           - not_null
-      - name: item_name
-        description: "The name of the release or item."
-      - name: artist
-        description: "The artist associated with the release."
       - name: package
         description: "Physical format or edition (e.g., 2x12'' Vinyl, CD, Digital)."
+        tests:
+          - not_null
       - name: item_url
-        description: "URL link to the item on Bandcamp."
+        description: "URL link to buy the product."
+        tests:
+          - not_null
+      - name: catalog_number
+        description: "Cat number for the release e.g. SHR001"
 
   - name: dim_product_price_history
     description: "Slowly Changing Dimension Type 2 tracking price revisions and attributes for label products over time."
@@ -30,12 +32,22 @@ models:
         tests:
           - unique
           - not_null
+      - name: product_key
+        description: "FK to dim_product."
+        tests:
+          - not_null
       - name: item_name
         description: "The product name."
         tests:
           - not_null
       - name: package
         description: "Physical format or edition (e.g., 2x12'' Vinyl, CD, Digital)."
+        tests:
+          - not_null
+      - name: item_url
+        description: "URL link to buy the product."
+        tests:
+          - not_null
       - name: item_price
         description: "The price of the product during this specific effective period."
       - name: valid_from
