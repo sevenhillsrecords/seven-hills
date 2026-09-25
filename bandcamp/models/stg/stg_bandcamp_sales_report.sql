@@ -42,7 +42,7 @@ ranked_sales AS (
     SELECT
         *,
         -- Assign a row number per transaction and item ID combination
-        -- ORDER BY sale_date (or a file load timestamp if you have one) determines which is 'first'
+        -- ORDER BY event_timestamp (or a file load timestamp if you have one) determines which is 'first'
         ROW_NUMBER() OVER (
             PARTITION BY bandcamp_transaction_id, bandcamp_transaction_item_id 
             ORDER BY 
@@ -86,7 +86,7 @@ transformed AS (
         CASE 
             WHEN date IS NULL OR date IN ('nan', 'None', '') OR trim(date) = '' THEN NULL
             ELSE strptime(date, '%d %b %Y %H:%M:%S %Z')::TIMESTAMP 
-        END AS sale_date,
+        END AS event_timestamp,
         
         CASE 
             WHEN ship_date IS NULL OR ship_date IN ('nan', 'None', '') OR trim(ship_date) = '' THEN NULL

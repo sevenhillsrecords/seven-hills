@@ -13,7 +13,7 @@ models:
         description: "Identifier for the transaction."
         tests:
           - not_null
-      - name: sale_date
+      - name: event_timestamp
         description: "Timestamp of when the transaction occurred."
         tests:
           - not_null

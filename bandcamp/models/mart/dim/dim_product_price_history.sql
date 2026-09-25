@@ -8,7 +8,7 @@ WITH price_changes AS (
         package,
         item_url,
         item_price,
-        sale_date AS effective_date
+        event_timestamp AS effective_date
     FROM {{ ref('stg_bandcamp_sales_report') }}
     WHERE item_name IS NOT NULL
         AND item_price IS NOT NULL

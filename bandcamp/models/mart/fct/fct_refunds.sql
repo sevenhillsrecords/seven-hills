@@ -19,7 +19,7 @@ SELECT
     item_total,
     amount_you_received,
     net_amount,
-    sale_date,
+    event_timestamp AS refund_timestamp,
     buyer_name,
     buyer_email,
     referer,

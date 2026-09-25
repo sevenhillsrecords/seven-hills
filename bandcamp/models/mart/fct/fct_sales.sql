@@ -21,7 +21,7 @@ SELECT
     amount_you_received,
     net_amount,
     additional_fan_contribution,
-    sale_date,
+    event_timestamp AS sale_timestamp,
     ship_date,
     buyer_name,
     buyer_email,
