@@ -3,7 +3,6 @@
 SELECT
     sales_report_id AS refund_id,
     transaction_item_id,
-    transaction_id,
     paypal_transaction_id,
     catalog_number,
     item_type,

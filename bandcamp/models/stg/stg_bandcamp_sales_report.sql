@@ -1,77 +1,23 @@
 {{ config(materialized='table') }}
 
-WITH cleaned_source AS (
+WITH cleaned_data AS (
     SELECT
-        bandcamp_transaction_id,
-        bandcamp_transaction_item_id,
-        paypal_transaction_id,
-        catalog_number,
-        item_type,
-        item_name,
-        artist,
-        package,
-        item_url,
-        currency,
-        item_price,
-        quantity,
-        sub_total,
-        shipping,
-        transaction_fee,
-        item_total,
-        amount_you_received,
-        net_amount,
-        additional_fan_contribution,
-        date,
-        ship_date,
-        buyer_name,
-        buyer_email,
-        buyer_note,
-        ship_to_name,
-        ship_to_street,
-        ship_to_city,
-        ship_to_state,
-        ship_to_zip,
-        ship_to_country,
-        ship_notes,
-        referer,
-        referer_url
-    FROM {{ source('bandcamp', 'bandcamp_raw_sales') }}
-),
-
-ranked_sales AS (
-    SELECT
-        *,
-        ROW_NUMBER() OVER (
-            PARTITION BY bandcamp_transaction_id, bandcamp_transaction_item_id 
-            ORDER BY 
-                CASE 
-                    WHEN date IS NULL OR date IN ('nan', 'None', '') OR trim(date) = '' THEN NULL
-                    ELSE strptime(date, '%d %b %Y %H:%M:%S %Z')::TIMESTAMP 
-                END ASC
-        ) AS rn
-    FROM cleaned_source
-),
-
-transformed AS (
-    SELECT
-        -- Identifiers
-        {{ dbt_utils.generate_surrogate_key(['bandcamp_transaction_id', 'bandcamp_transaction_item_id']) }} AS sales_report_id,
+        -- Clean identifiers first so hashing and partitioning are consistent
+        TRY_CAST(TRY_CAST({{ clean_string('bandcamp_transaction_item_id') }} AS DOUBLE) AS BIGINT) AS transaction_item_id,
+        TRY_CAST(TRY_CAST({{ clean_string('bandcamp_transaction_id') }} AS DOUBLE) AS BIGINT) AS transaction_id,
         
-        -- Text columns cleaned for 'nan', 'None', empty strings, and whitespace
-        CASE WHEN bandcamp_transaction_item_id IS NULL OR bandcamp_transaction_item_id IN ('nan', 'None', '') OR trim(bandcamp_transaction_item_id) = '' THEN NULL ELSE CAST(bandcamp_transaction_item_id AS VARCHAR) END AS transaction_item_id,
-        CASE WHEN bandcamp_transaction_id IS NULL OR bandcamp_transaction_id IN ('nan', 'None', '') OR trim(bandcamp_transaction_id) = '' THEN NULL ELSE CAST(bandcamp_transaction_id AS VARCHAR) END AS transaction_id,
-        CASE WHEN paypal_transaction_id IS NULL OR paypal_transaction_id IN ('nan', 'None', '') OR trim(paypal_transaction_id) = '' THEN NULL ELSE CAST(paypal_transaction_id AS VARCHAR) END AS paypal_transaction_id,
-        CASE WHEN catalog_number IS NULL OR catalog_number IN ('nan', 'None', '') OR trim(catalog_number) = '' THEN NULL ELSE CAST(catalog_number AS VARCHAR) END AS catalog_number,
-        CASE WHEN item_type IS NULL OR item_type IN ('nan', 'None', '') OR trim(item_type) = '' THEN NULL ELSE CAST(item_type AS VARCHAR) END AS item_type,
+        {{ clean_string('paypal_transaction_id') }} AS paypal_transaction_id,
+        {{ clean_string('catalog_number') }} AS catalog_number,
+        {{ clean_string('item_type') }} AS item_type,
 
         -- Item & Artist Details
-        CASE WHEN item_name IS NULL OR item_name IN ('nan', 'None', '') OR trim(item_name) = '' THEN NULL ELSE CAST(item_name AS VARCHAR) END AS item_name,
-        CASE WHEN artist IS NULL OR artist IN ('nan', 'None', '') OR trim(artist) = '' THEN NULL ELSE CAST(artist AS VARCHAR) END AS artist,
-        CASE WHEN package IS NULL OR package IN ('nan', 'None', '') OR trim(package) = '' THEN NULL ELSE CAST(package AS VARCHAR) END AS package,
-        CASE WHEN item_url IS NULL OR item_url IN ('nan', 'None', '') OR trim(item_url) = '' THEN NULL ELSE CAST(item_url AS VARCHAR) END AS item_url,
+        {{ clean_string('item_name') }} AS item_name,
+        {{ clean_string('artist') }} AS artist,
+        {{ clean_string('package') }} AS package,
+        {{ clean_string('item_url') }} AS item_url,
 
-        -- Financials & Pricing (TRY_CAST automatically handles blanks, nan, and None as NULL)
-        CASE WHEN currency IS NULL OR currency IN ('nan', 'None', '') OR trim(currency) = '' THEN NULL ELSE CAST(currency AS VARCHAR) END AS currency,
+        -- Financials & Pricing
+        {{ clean_string('currency') }} AS currency,
         TRY_CAST(item_price AS DECIMAL(10,2)) AS item_price,
         TRY_CAST(quantity AS INTEGER) AS quantity,
         TRY_CAST(sub_total AS DECIMAL(10,2)) AS sub_total,
@@ -94,25 +40,46 @@ transformed AS (
         END AS ship_timestamp,
 
         -- Buyer Information
-        CASE WHEN buyer_name IS NULL OR buyer_name IN ('nan', 'None', '') OR trim(buyer_name) = '' THEN NULL ELSE CAST(buyer_name AS VARCHAR) END AS buyer_name,
-        CASE WHEN buyer_email IS NULL OR buyer_email IN ('nan', 'None', '') OR trim(buyer_email) = '' THEN NULL ELSE CAST(buyer_email AS VARCHAR) END AS buyer_email,
-        CASE WHEN buyer_note IS NULL OR buyer_note IN ('nan', 'None', '') OR trim(buyer_note) = '' THEN NULL ELSE CAST(buyer_note AS VARCHAR) END AS buyer_note,
+        {{ clean_string('buyer_name') }} AS buyer_name,
+        {{ clean_string('buyer_email') }} AS buyer_email,
+        {{ clean_string('buyer_note') }} AS buyer_note,
 
         -- Shipping & Destination Details
-        CASE WHEN ship_to_name IS NULL OR ship_to_name IN ('nan', 'None', '') OR trim(ship_to_name) = '' THEN NULL ELSE CAST(ship_to_name AS VARCHAR) END AS ship_to_name,
-        CASE WHEN ship_to_street IS NULL OR ship_to_street IN ('nan', 'None', '') OR trim(ship_to_street) = '' THEN NULL ELSE CAST(ship_to_street AS VARCHAR) END AS ship_to_street,
-        CASE WHEN ship_to_city IS NULL OR ship_to_city IN ('nan', 'None', '') OR trim(ship_to_city) = '' THEN NULL ELSE CAST(ship_to_city AS VARCHAR) END AS ship_to_city,
-        CASE WHEN ship_to_state IS NULL OR ship_to_state IN ('nan', 'None', '') OR trim(ship_to_state) = '' THEN NULL ELSE CAST(ship_to_state AS VARCHAR) END AS ship_to_state,
-        CASE WHEN ship_to_zip IS NULL OR ship_to_zip IN ('nan', 'None', '') OR trim(ship_to_zip) = '' THEN NULL ELSE CAST(ship_to_zip AS VARCHAR) END AS ship_to_zip,
-        CASE WHEN ship_to_country IS NULL OR ship_to_country IN ('nan', 'None', '') OR trim(ship_to_country) = '' THEN NULL ELSE CAST(ship_to_country AS VARCHAR) END AS ship_to_country,
-        CASE WHEN ship_notes IS NULL OR ship_notes IN ('nan', 'None', '') OR trim(ship_notes) = '' THEN NULL ELSE CAST(ship_notes AS VARCHAR) END AS ship_notes,
+        {{ clean_string('ship_to_name') }} AS ship_to_name,
+        {{ clean_string('ship_to_street') }} AS ship_to_street,
+        {{ clean_string('ship_to_city') }} AS ship_to_city,
+        {{ clean_string('ship_to_state') }} AS ship_to_state,
+        {{ clean_string('ship_to_zip') }} AS ship_to_zip,
+        {{ clean_string('ship_to_country') }} AS ship_to_country,
+        {{ clean_string('ship_notes') }} AS ship_notes,
 
         -- Traffic / Acquisition
-        CASE WHEN referer IS NULL OR referer IN ('nan', 'None', '') OR trim(referer) = '' THEN NULL ELSE CAST(referer AS VARCHAR) END AS referer,
-        CASE WHEN referer_url IS NULL OR referer_url IN ('nan', 'None', '') OR trim(referer_url) = '' THEN NULL ELSE CAST(referer_url AS VARCHAR) END AS referer_url
+        {{ clean_string('referer') }} AS referer,
+        {{ clean_string('referer_url') }} AS referer_url
 
-    FROM ranked_sales
-    WHERE rn = 1
+    FROM {{ source('bandcamp', 'bandcamp_raw_sales') }}
+),
+
+add_surrogate_key AS (
+    SELECT
+        {{ dbt_utils.generate_surrogate_key([
+            'transaction_id', 
+            'transaction_item_id', 
+            'paypal_transaction_id'
+        ]) }} AS sales_report_id,
+        *
+    FROM cleaned_data
+),
+
+ranked_data AS (
+    SELECT
+        *,
+        ROW_NUMBER() OVER (
+            PARTITION BY sales_report_id
+            ORDER BY event_timestamp ASC NULLS LAST
+        ) AS rn
+    FROM add_surrogate_key
 )
 
-SELECT * FROM transformed
+SELECT * EXCLUDE (rn) FROM ranked_data
+WHERE rn = 1
