@@ -49,4 +49,4 @@ jobs:
         env:
           MOTHERDUCK_TOKEN: ${{ secrets.MOTHERDUCK_TOKEN }}
         run: |
-          dbt build --target prod
+          dbt build --target prod --profiles-dir ./bandcamp
