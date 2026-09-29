@@ -114,7 +114,6 @@ def save_to_duckdb(sales_report):
     df = pd.DataFrame(sales_items)
 
     # Convert *everything* to string first to prevent type inference collisions 
-    # (IDs, notes, dates, codes won't cause unexpected integer/float casting crashes)
     for col in df.columns:
         df[col] = df[col].astype(str)
 
@@ -139,40 +138,70 @@ def save_to_duckdb(sales_report):
 
     con.close()
 
+def manual_backfill(access_token, band_id):
+    """Checks for environment variables passed from GitHub Actions 
+    workflow inputs and runs a targeted backfill window:
+    - start_date minus 25 hours
+    - end_date plus 1 day
+    """
+    start_date_str = os.getenv("INPUT_START_DATE")
+    end_date_str = os.getenv("INPUT_END_DATE")
+    
+    if not start_date_str or not end_date_str:
+        print("No manual backfill dates provided.")
+        return False
+        
+    try:
+        base_start = datetime.strptime(start_date_str, "%Y-%m-%d").replace(tzinfo=timezone.utc)
+        base_end = datetime.strptime(end_date_str, "%Y-%m-%d").replace(tzinfo=timezone.utc)
+        
+        # Apply custom backfill window adjustments
+        start_time = base_start - timedelta(hours=25)
+        end_time = base_end + timedelta(days=1)
+        
+        print(f"Running manual backfill window from {start_time} to {end_time}...")
+        report = get_sales_report(access_token, band_id, start_time=start_time, end_time=end_time)
+        if report:
+            save_to_duckdb(report)
+        return True
+    except Exception as e:
+        print(f"Error during manual backfill execution: {e}")
+        return False
+
 def run_historical_backfill(access_token, band_id, start_year=2018):
-  """Iterates through time in monthly chunks from start_year to today,
+    """Iterates through time in monthly chunks from start_year to today,
+    fetching and ingesting historical Bandcamp sales data.
+    """
+    current_start = datetime(start_year, 1, 1, 0, 0, 0, tzinfo=timezone.utc)
+    now = datetime.now(timezone.utc)
+    chunk_size = timedelta(days=30)
 
-  fetching and ingesting historical Bandcamp sales data.
-  """
-  current_start = datetime(start_year, 1, 1, 0, 0, 0, tzinfo=timezone.utc)
-  now = datetime.now(timezone.utc)
-  chunk_size = timedelta(days=30)
+    print(f"Starting historical backfill from {start_year}-01-01 to {now.strftime('%Y-%m-%d')}...")
 
-  print(f"Starting historical backfill from {start_year}-01-01 to {now.strftime('%Y-%m-%d')}...")
+    while current_start < now:
+        chunk_end = min(current_start + chunk_size, now)
+        print(f"Fetching chunk: {current_start.strftime('%Y-%m-%d')} to {chunk_end.strftime('%Y-%m-%d')}")
 
-  while current_start < now:
-    chunk_end = min(current_start + chunk_size, now)
+        report = get_sales_report(access_token, band_id, start_time=current_start, end_time=chunk_end)
+        if report:
+            save_to_duckdb(report)
 
-    print(f"Fetching chunk: {current_start.strftime('%Y-%m-%d')} to {chunk_end.strftime('%Y-%m-%d')}")
+        current_start = chunk_end
 
-    # Fetch chunk and ingest directly
-    report = get_sales_report(access_token, band_id, start_time=current_start, end_time=chunk_end)
-    if report:
-      save_to_duckdb(report)
-
-    # Move forward to the next chunk
-    current_start = chunk_end
-
-  print("Historical backfill complete!")
+    print("Historical backfill complete!")
 
 if __name__ == "__main__":
-  token = refresh_access_token()
-  if token:
-    b_id = get_band_id(token)
-    if b_id:
-      # To run the normal daily ingestion, use:
-      report = get_sales_report(token, b_id)
-      save_to_duckdb(report)
+    token = refresh_access_token()
+    if token:
+        b_id = get_band_id(token)
+        if b_id:
+            # Check if this is a manual backfill execution from GitHub Actions
+            if os.getenv("INPUT_START_DATE") and os.getenv("INPUT_END_DATE"):
+                manual_backfill(token, b_id)
+            else:
+                # Standard automated daily run (past 25 hours)
+                report = get_sales_report(token, b_id)
+                save_to_duckdb(report)
 
-      # To run the backfill, uncomment below:
-    #   run_historical_backfill(token, b_id, start_year=2018)
+            # To run a full historical backfill locally, uncomment below:
+            # run_historical_backfill(token, b_id, start_year=2018)
