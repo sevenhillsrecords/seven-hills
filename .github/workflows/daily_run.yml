@@ -46,7 +46,8 @@ jobs:
         run: python bandcamp_api.py
 
       - name: Run dbt build
+        working-directory: ./bandcamp
         env:
           MOTHERDUCK_TOKEN: ${{ secrets.MOTHERDUCK_TOKEN }}
         run: |
-          dbt build --target prod --profiles-dir ./bandcamp
+          dbt build --target prod
