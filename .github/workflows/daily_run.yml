@@ -50,4 +50,5 @@ jobs:
         env:
           MOTHERDUCK_TOKEN: ${{ secrets.MOTHERDUCK_TOKEN }}
         run: |
+          dbt deps
           dbt build --target dev
