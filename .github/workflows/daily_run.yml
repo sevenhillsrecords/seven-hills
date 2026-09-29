@@ -2,8 +2,17 @@ name: Daily Bandcamp Ingestion
 
 on:
   schedule:
-    - cron: '0 0 * * *' # Runs every day at 00:00 UTC
+    - cron: '0 0 * * *' # Runs automatically every day at 00:00 UTC
   workflow_dispatch:
+    inputs:
+      start_date:
+        description: 'Start Date (YYYY-MM-DD) - Leave blank for default'
+        required: false
+        type: string
+      end_date:
+        description: 'End Date (YYYY-MM-DD) - Leave blank for default'
+        required: false
+        type: string
 
 jobs:
   run-ingestion:
@@ -31,9 +40,11 @@ jobs:
           REFRESH_TOKEN: ${{ secrets.REFRESH_TOKEN }}
           MOTHERDUCK_TOKEN: ${{ secrets.MOTHERDUCK_TOKEN }}
           GH_PAT: ${{ secrets.GH_PAT }}
+          # Pass the manual inputs into environment variables
+          INPUT_START_DATE: ${{ github.event.inputs.start_date }}
+          INPUT_END_DATE: ${{ github.event.inputs.end_date }}
         run: python bandcamp_api.py
 
-      # Runs dbt build after ingestion
       - name: Run dbt build
         env:
           MOTHERDUCK_TOKEN: ${{ secrets.MOTHERDUCK_TOKEN }}
