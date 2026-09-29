@@ -1,5 +1,8 @@
 requests
 python-dotenv
-duckdb
+duckdb==1.5.5 # Motherduck doesn't support DuckDB version > 1.5.5
 pandas
 PyGithub
+streamlit
+dbt
+dbt-duckdb
