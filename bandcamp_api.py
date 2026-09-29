@@ -157,7 +157,7 @@ def manual_backfill(access_token, band_id):
         
         # Apply custom backfill window adjustments
         start_time = base_start - timedelta(hours=25)
-        end_time = base_end + timedelta(days=1)
+        end_time = base_end
         
         print(f"Running manual backfill window from {start_time} to {end_time}...")
         report = get_sales_report(access_token, band_id, start_time=start_time, end_time=end_time)
