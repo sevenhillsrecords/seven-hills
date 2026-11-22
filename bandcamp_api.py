@@ -9,10 +9,21 @@ import requests
 # Load environment variables from the local .env file
 load_dotenv()
 
+
+def log_mode(mode_name, details=None):
+    """Print a clear, scannable log banner indicating the active execution mode."""
+    print("=" * 60)
+    print(f"MODE: {mode_name}")
+    if details:
+        for key, value in details.items():
+            print(f"  {key}: {value}")
+    print("=" * 60)
+
+
 def update_github_secret(new_refresh_token):
     # Only run this if we are inside GitHub Actions
     if not os.getenv("GITHUB_ACTIONS"):
-        print("Local run detected: Skipping automatic GitHub Secret update.")
+        print("[AUTH] Local run detected: Skipping automatic GitHub Secret update.")
         return
 
     try:
@@ -21,11 +32,13 @@ def update_github_secret(new_refresh_token):
         repo = g.get_repo(os.getenv("GITHUB_REPOSITORY"))
 
         repo.create_secret("REFRESH_TOKEN", new_refresh_token)
-        print("Successfully updated GitHub Secret with the new refresh token.")
+        print("[AUTH] Successfully updated GitHub Secret with the new refresh token.")
     except Exception as e:
-        print(f"Failed to update GitHub secret: {e}")
+        print(f"[AUTH] Failed to update GitHub secret: {e}")
+
 
 def refresh_access_token():
+    print("[AUTH] Refreshing Bandcamp access token...")
     url = "https://bandcamp.com/oauth_token"
     payload = {
         "grant_type": "refresh_token",
@@ -44,10 +57,12 @@ def refresh_access_token():
         if new_refresh_token:
             update_github_secret(new_refresh_token)
 
+        print("[AUTH] Access token refreshed successfully.")
         return access_token
     except requests.exceptions.RequestException as e:
-        print(f"Failed to refresh token: {e}")
+        print(f"[AUTH] Failed to refresh token: {e}")
         return None
+
 
 def get_band_id(access_token):
     url = "https://bandcamp.com/api/account/1/my_bands"
@@ -59,26 +74,43 @@ def get_band_id(access_token):
         response = requests.post(url, headers=headers)
         response.raise_for_status()
         bands_data = response.json()
-        return bands_data["bands"][0]["band_id"]
+        band_id = bands_data["bands"][0]["band_id"]
+        print(f"[API] Resolved band_id: {band_id}")
+        return band_id
     except requests.exceptions.RequestException as e:
-        print(f"Error fetching band ID: {e}")
+        print(f"[API] Error fetching band ID: {e}")
         return None
+
+
+def get_daily_utc_window(reference_time=None):
+    """Return exact [yesterday 00:00:00 UTC, today 00:00:00 UTC) boundaries."""
+    ref = reference_time or datetime.now(timezone.utc)
+    today_midnight = ref.astimezone(timezone.utc).replace(
+        hour=0, minute=0, second=0, microsecond=0
+    )
+    yesterday_midnight = today_midnight - timedelta(days=1)
+    return yesterday_midnight, today_midnight
+
 
 def get_sales_report(access_token, band_id, start_time=None, end_time=None):
     url = "https://bandcamp.com/api/sales/4/sales_report"
     if not access_token or not band_id:
-        print("Missing access token or band ID.")
+        print("[API] Missing access token or band ID.")
         return None
 
-    # Fallback to the last 25 hours if no specific window is provided
-    if not end_time:
-        end_time = datetime.now(timezone.utc)
-    if not start_time:
-        start_time = end_time - timedelta(hours=25)
+    # Default to exact [yesterday 00:00:00 UTC, today 00:00:00 UTC) window
+    if not start_time or not end_time:
+        default_start, default_end = get_daily_utc_window()
+        if not start_time:
+            start_time = default_start
+        if not end_time:
+            end_time = default_end
 
     # Ensure formatting strings are handled cleanly whether datetimes or strings are passed
     start_str = start_time.strftime("%Y-%m-%d %H:%M:%S") if isinstance(start_time, datetime) else start_time
     end_str = end_time.strftime("%Y-%m-%d %H:%M:%S") if isinstance(end_time, datetime) else end_time
+
+    print(f"[API] Fetching Bandcamp sales report: {start_str} UTC -> {end_str} UTC")
 
     payload = {
         "band_id": band_id,
@@ -92,14 +124,15 @@ def get_sales_report(access_token, band_id, start_time=None, end_time=None):
         response.raise_for_status()
         return response.json()
     except requests.exceptions.RequestException as e:
-        print(f"Error fetching sales report for window {start_str} to {end_str}: {e}")
+        print(f"[API] Error fetching sales report for window {start_str} to {end_str}: {e}")
         if e.response is not None:
-            print(f"Response body: {e.response.text}")
+            print(f"[API] Response body: {e.response.text}")
         return None
+
 
 def save_to_duckdb(sales_report):
     if not sales_report:
-        print("No sales report data received to save.")
+        print("[DB] No sales report data received to save.")
         return
 
     con = duckdb.connect("md:my_db")
@@ -107,66 +140,92 @@ def save_to_duckdb(sales_report):
     sales_items = sales_report.get("report", [])
 
     if not sales_items:
-        print("No individual sales records found in the report for this time window.")
+        print("[DB] No individual sales records found in the report for this time window.")
         con.close()
         return
 
     df = pd.DataFrame(sales_items)
 
-    # Convert *everything* to string first to prevent type inference collisions 
+    # Convert *everything* to string first to prevent type inference collisions
     for col in df.columns:
         df[col] = df[col].astype(str)
 
     con.register('df_view', df)
-    
+
     con.execute("""
-        CREATE TABLE IF NOT EXISTS bandcamp_raw_sales AS 
+        CREATE TABLE IF NOT EXISTS bandcamp_raw_sales AS
         SELECT * FROM df_view WHERE 1=0
     """)
-    
+
     con.execute("""
-        INSERT INTO bandcamp_raw_sales 
+        INSERT INTO bandcamp_raw_sales
         SELECT * FROM df_view
     """)
-    
+
     con.unregister('df_view')
 
-    print(f"Successfully ingested {len(df)} sales records into DuckDB table 'bandcamp_raw_sales'.")
+    print(f"[DB] Ingested {len(df)} sales records into 'bandcamp_raw_sales'.")
 
     result = con.execute("SELECT COUNT(*) FROM bandcamp_raw_sales").fetchone()
-    print(f"Total rows in DuckDB now: {result[0]}")
+    print(f"[DB] Total rows in 'bandcamp_raw_sales': {result[0]}")
 
     con.close()
 
+
+def run_daily_ingestion(access_token, band_id):
+    start_time, end_time = get_daily_utc_window()
+    log_mode(
+        "DAILY RUN",
+        {
+            "Trigger": "Scheduled / Default",
+            "Window (UTC)": f"{start_time.strftime('%Y-%m-%d %H:%M:%S')} -> {end_time.strftime('%Y-%m-%d %H:%M:%S')}",
+        },
+    )
+    report = get_sales_report(access_token, band_id, start_time=start_time, end_time=end_time)
+    save_to_duckdb(report)
+    print("[DAILY RUN] Completed.")
+
+
 def manual_backfill(access_token, band_id):
-    """Checks for environment variables passed from GitHub Actions 
+    """Checks for environment variables passed from GitHub Actions
     workflow inputs and runs a targeted backfill window:
     - start_date minus 25 hours
-    - end_date plus 1 day
+    - end_date at 00:00:00 UTC
     """
     start_date_str = os.getenv("INPUT_START_DATE")
     end_date_str = os.getenv("INPUT_END_DATE")
-    
+
     if not start_date_str or not end_date_str:
-        print("No manual backfill dates provided.")
+        print("[MANUAL BACKFILL] No manual backfill dates provided.")
         return False
-        
+
     try:
         base_start = datetime.strptime(start_date_str, "%Y-%m-%d").replace(tzinfo=timezone.utc)
         base_end = datetime.strptime(end_date_str, "%Y-%m-%d").replace(tzinfo=timezone.utc)
-        
+
         # Apply custom backfill window adjustments
         start_time = base_start - timedelta(hours=25)
         end_time = base_end
-        
-        print(f"Running manual backfill window from {start_time} to {end_time}...")
+
+        log_mode(
+            "MANUAL BACKFILL",
+            {
+                "Input start_date": start_date_str,
+                "Input end_date": end_date_str,
+                "Computed start_time": start_time.strftime("%Y-%m-%d %H:%M:%S UTC"),
+                "Computed end_time": end_time.strftime("%Y-%m-%d %H:%M:%S UTC"),
+            },
+        )
+
         report = get_sales_report(access_token, band_id, start_time=start_time, end_time=end_time)
         if report:
             save_to_duckdb(report)
+        print("[MANUAL BACKFILL] Completed.")
         return True
     except Exception as e:
-        print(f"Error during manual backfill execution: {e}")
+        print(f"[MANUAL BACKFILL] Error during execution: {e}")
         return False
+
 
 def run_historical_backfill(access_token, band_id, start_year=2018):
     """Iterates through time in monthly chunks from start_year to today,
@@ -176,11 +235,23 @@ def run_historical_backfill(access_token, band_id, start_year=2018):
     now = datetime.now(timezone.utc)
     chunk_size = timedelta(days=30)
 
-    print(f"Starting historical backfill from {start_year}-01-01 to {now.strftime('%Y-%m-%d')}...")
+    log_mode(
+        "HISTORICAL BACKFILL",
+        {
+            "Start year": start_year,
+            "Range": f"{current_start.strftime('%Y-%m-%d')} -> {now.strftime('%Y-%m-%d')}",
+            "Chunk size": f"{chunk_size.days} days",
+        },
+    )
 
+    chunk_num = 0
     while current_start < now:
+        chunk_num += 1
         chunk_end = min(current_start + chunk_size, now)
-        print(f"Fetching chunk: {current_start.strftime('%Y-%m-%d')} to {chunk_end.strftime('%Y-%m-%d')}")
+        print(
+            f"[HISTORICAL BACKFILL] Chunk #{chunk_num}: "
+            f"{current_start.strftime('%Y-%m-%d %H:%M:%S')} -> {chunk_end.strftime('%Y-%m-%d %H:%M:%S')} UTC"
+        )
 
         report = get_sales_report(access_token, band_id, start_time=current_start, end_time=chunk_end)
         if report:
@@ -188,20 +259,18 @@ def run_historical_backfill(access_token, band_id, start_year=2018):
 
         current_start = chunk_end
 
-    print("Historical backfill complete!")
+    print(f"[HISTORICAL BACKFILL] Complete! Processed {chunk_num} chunks.")
+
 
 if __name__ == "__main__":
     token = refresh_access_token()
     if token:
         b_id = get_band_id(token)
         if b_id:
-            # Check if this is a manual backfill execution from GitHub Actions
             if os.getenv("INPUT_START_DATE") and os.getenv("INPUT_END_DATE"):
                 manual_backfill(token, b_id)
             else:
-                # Standard automated daily run (past 25 hours)
-                report = get_sales_report(token, b_id)
-                save_to_duckdb(report)
+                run_daily_ingestion(token, b_id)
 
             # To run a full historical backfill locally, uncomment below:
             # run_historical_backfill(token, b_id, start_year=2018)
